@@ -39,16 +39,16 @@ async def webhook(request: Request):
 
         # Verifica se é uma mensagem de áudio
         message = data.get("message", {})
-        message_type = message.get("type")
+        message_type = message.get("messageType", "")
 
-        if message_type != "audio":
+        if message_type != "AudioMessage":
             print(f"Mensagem ignorada (tipo: {message_type})")
             return {"status": "ignored", "reason": "not_audio"}
 
         # Extrai informações
-        from_number = data.get("from", "")
-        audio_data = message.get("audio", {})
-        media_url = audio_data.get("url") or audio_data.get("mediaUrl")
+        from_number = message.get("chatid", "").replace("@s.whatsapp.net", "")
+        content = message.get("content", {})
+        media_url = content.get("URL")
 
         if not media_url:
             print("URL do áudio não encontrada")
