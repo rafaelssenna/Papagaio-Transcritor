@@ -147,11 +147,11 @@ async def send_message(to: str, text: str, base_url: str = None):
     try:
         api_url = base_url or UAZAPI_BASE_URL
         async with httpx.AsyncClient(timeout=30) as client:
-            url = f"{api_url}/message/text"
+            url = f"{api_url}/send/text"
 
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {UAZAPI_TOKEN}"
+                "token": UAZAPI_TOKEN
             }
 
             payload = {
