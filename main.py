@@ -50,6 +50,9 @@ async def webhook(request: Request):
         content = message.get("content", {})
         media_url = content.get("URL")
 
+        # Pega a BaseUrl do webhook (mais confiável)
+        base_url = data.get("BaseUrl") or UAZAPI_BASE_URL
+
         if not media_url:
             print("URL do áudio não encontrada")
             return {"status": "error", "reason": "no_media_url"}
@@ -60,16 +63,16 @@ async def webhook(request: Request):
         audio_bytes = await download_audio(media_url)
 
         if not audio_bytes:
-            await send_message(from_number, "❌ Não consegui baixar o áudio. Tente novamente.")
+            await send_message(from_number, "❌ Não consegui baixar o áudio. Tente novamente.", base_url)
             return {"status": "error", "reason": "download_failed"}
 
         # Transcreve com Gemini
         transcription = await transcribe_audio(audio_bytes)
 
         if transcription:
-            await send_message(from_number, f"📝 *Transcrição:*\n\n{transcription}")
+            await send_message(from_number, f"📝 *Transcrição:*\n\n{transcription}", base_url)
         else:
-            await send_message(from_number, "❌ Não consegui transcrever o áudio. Tente novamente.")
+            await send_message(from_number, "❌ Não consegui transcrever o áudio. Tente novamente.", base_url)
 
         return {"status": "ok", "transcription": transcription}
 
@@ -116,7 +119,7 @@ async def transcribe_audio(audio_bytes: bytes) -> str | None:
             audio_file = genai.upload_file(temp_path, mime_type="audio/ogg")
 
             # Usa Gemini para transcrever
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.0-flash")
 
             response = model.generate_content([
                 audio_file,
@@ -137,13 +140,14 @@ async def transcribe_audio(audio_bytes: bytes) -> str | None:
         return None
 
 
-async def send_message(to: str, text: str):
+async def send_message(to: str, text: str, base_url: str = None):
     """
     Envia mensagem de volta pelo UAZAPI
     """
     try:
+        api_url = base_url or UAZAPI_BASE_URL
         async with httpx.AsyncClient(timeout=30) as client:
-            url = f"{UAZAPI_BASE_URL}/message/text"
+            url = f"{api_url}/message/text"
 
             headers = {
                 "Content-Type": "application/json",
