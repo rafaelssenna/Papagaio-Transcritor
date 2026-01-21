@@ -2,14 +2,12 @@ import os
 import tempfile
 import httpx
 import google.generativeai as genai
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 
 load_dotenv()
 
 # Configurações
-UAZAPI_BASE_URL = os.getenv("UAZAPI_BASE_URL")
-UAZAPI_TOKEN = os.getenv("UAZAPI_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Configura Gemini
@@ -45,34 +43,36 @@ async def webhook(request: Request):
             print(f"Mensagem ignorada (tipo: {message_type})")
             return {"status": "ignored", "reason": "not_audio"}
 
-        # Extrai informações
+        # Extrai informações do webhook
         from_number = message.get("chatid", "").replace("@s.whatsapp.net", "")
-        content = message.get("content", {})
-        media_url = content.get("URL")
+        message_id = message.get("messageid", "")
+        base_url = data.get("BaseUrl", "")
+        token = data.get("token", "")
 
-        # Pega a BaseUrl do webhook (mais confiável)
-        base_url = data.get("BaseUrl") or UAZAPI_BASE_URL
+        if not message_id:
+            print("ID da mensagem não encontrado")
+            return {"status": "error", "reason": "no_message_id"}
 
-        if not media_url:
-            print("URL do áudio não encontrada")
-            return {"status": "error", "reason": "no_media_url"}
+        if not base_url or not token:
+            print("BaseUrl ou token não encontrados no webhook")
+            return {"status": "error", "reason": "missing_credentials"}
 
-        print(f"Processando áudio de {from_number}: {media_url}")
+        print(f"Processando áudio de {from_number}, mensagem: {message_id}")
 
-        # Baixa o áudio
-        audio_bytes = await download_audio(media_url)
+        # Baixa o áudio via UAZAPI (descriptografado)
+        audio_bytes = await download_audio_via_uazapi(base_url, token, message_id)
 
         if not audio_bytes:
-            await send_message(from_number, "❌ Não consegui baixar o áudio. Tente novamente.", base_url)
+            await send_message(from_number, "Não consegui baixar o áudio. Tente novamente.", base_url, token)
             return {"status": "error", "reason": "download_failed"}
 
         # Transcreve com Gemini
         transcription = await transcribe_audio(audio_bytes)
 
         if transcription:
-            await send_message(from_number, f"📝 *Transcrição:*\n\n{transcription}", base_url)
+            await send_message(from_number, f"*Transcrição:*\n\n{transcription}", base_url, token)
         else:
-            await send_message(from_number, "❌ Não consegui transcrever o áudio. Tente novamente.", base_url)
+            await send_message(from_number, "Não consegui transcrever o áudio. Tente novamente.", base_url, token)
 
         return {"status": "ok", "transcription": transcription}
 
@@ -81,24 +81,52 @@ async def webhook(request: Request):
         return {"status": "error", "message": str(e)}
 
 
-async def download_audio(url: str) -> bytes | None:
+async def download_audio_via_uazapi(base_url: str, token: str, message_id: str) -> bytes | None:
     """
-    Baixa o arquivo de áudio da URL
+    Baixa o áudio usando o endpoint /message/download da UAZAPI
     """
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            # Adiciona token se necessário
-            headers = {}
-            if UAZAPI_TOKEN:
-                headers["Authorization"] = f"Bearer {UAZAPI_TOKEN}"
+        async with httpx.AsyncClient(timeout=120) as client:
+            # Primeiro, usa o endpoint de download para obter URL pública
+            download_url = f"{base_url}/message/download"
 
-            response = await client.get(url, headers=headers, follow_redirects=True)
+            headers = {
+                "Content-Type": "application/json",
+                "token": token
+            }
 
-            if response.status_code == 200:
-                return response.content
-            else:
-                print(f"Erro ao baixar áudio: {response.status_code}")
+            payload = {
+                "id": message_id,
+                "generate_mp3": False,  # Mantém OGG para melhor compatibilidade
+                "return_link": True
+            }
+
+            print(f"Baixando áudio via UAZAPI: {download_url}")
+            response = await client.post(download_url, json=payload, headers=headers)
+
+            if response.status_code != 200:
+                print(f"Erro ao obter URL do áudio: {response.status_code} - {response.text}")
                 return None
+
+            result = response.json()
+            file_url = result.get("fileURL")
+
+            if not file_url:
+                print(f"URL do arquivo não encontrada na resposta: {result}")
+                return None
+
+            print(f"URL do áudio obtida: {file_url}")
+
+            # Agora baixa o arquivo da URL pública
+            audio_response = await client.get(file_url, follow_redirects=True)
+
+            if audio_response.status_code == 200:
+                print(f"Áudio baixado: {len(audio_response.content)} bytes")
+                return audio_response.content
+            else:
+                print(f"Erro ao baixar áudio: {audio_response.status_code}")
+                return None
+
     except Exception as e:
         print(f"Erro ao baixar áudio: {e}")
         return None
@@ -140,18 +168,17 @@ async def transcribe_audio(audio_bytes: bytes) -> str | None:
         return None
 
 
-async def send_message(to: str, text: str, base_url: str = None):
+async def send_message(to: str, text: str, base_url: str, token: str):
     """
     Envia mensagem de volta pelo UAZAPI
     """
     try:
-        api_url = base_url or UAZAPI_BASE_URL
         async with httpx.AsyncClient(timeout=30) as client:
-            url = f"{api_url}/send/text"
+            url = f"{base_url}/send/text"
 
             headers = {
                 "Content-Type": "application/json",
-                "token": UAZAPI_TOKEN
+                "token": token
             }
 
             payload = {
