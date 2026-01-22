@@ -53,9 +53,9 @@ async def lifespan(app: FastAPI):
     if engine:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        # Limpa áudios antigos (mais de 1 hora)
+        # Limpa áudios antigos (mais de 24 horas)
         async with async_session() as session:
-            cutoff = datetime.utcnow() - timedelta(hours=1)
+            cutoff = datetime.utcnow() - timedelta(hours=24)
             await session.execute(delete(PendingAudio).where(PendingAudio.created_at < cutoff))
             await session.commit()
     yield
