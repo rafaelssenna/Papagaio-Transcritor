@@ -1,4 +1,5 @@
 import os
+import random
 import tempfile
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
@@ -17,15 +18,63 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# Mensagens de erro amigáveis
+# Mensagens de erro amigáveis (com variações engraçadas)
 ERROR_MESSAGES = {
-    "download_failed": "Ops! Não consegui baixar o áudio. O arquivo pode ter expirado ou estar corrompido. Por favor, envie novamente.",
-    "transcription_failed": "Ops! Não consegui transcrever o áudio. Isso pode acontecer se o áudio estiver muito baixo, com muito ruído ou em um idioma não suportado. Tente enviar novamente.",
-    "timeout": "Ops! A transcrição demorou mais do que o esperado. Por favor, tente novamente em alguns instantes.",
-    "audio_expired": "Ops! Este áudio já expirou (mais de 24 horas). Por favor, envie o áudio novamente.",
-    "service_unavailable": "Ops! O serviço está temporariamente indisponível. Por favor, tente novamente em alguns minutos.",
-    "cancelled": "Ok! O áudio não será transcrito.",
+    "download_failed": [
+        "Ops! O áudio fugiu antes de eu conseguir pegar. Envia de novo?",
+        "Eita! O arquivo deu uma de Houdini e sumiu. Manda novamente!",
+        "Ih, o áudio tava tímido e se escondeu. Tenta enviar de novo!",
+        "Falha no download! Parece que o arquivo tirou férias. Envia outro!",
+        "O áudio não quis colaborar hoje. Bora tentar de novo?",
+    ],
+    "transcription_failed": [
+        "Ops! Meus ouvidos digitais não entenderam nada. Tenta um áudio mais claro?",
+        "Desculpa, mas esse áudio me deixou confuso. Será que tá muito baixo ou com ruído?",
+        "Hmm, não consegui decifrar esse áudio. Parece código secreto! Envia outro?",
+        "Minha IA teve um branco nesse áudio. Tenta mandar de novo!",
+        "Esse áudio me pegou de surpresa e não entendi nada. Bora tentar novamente?",
+    ],
+    "timeout": [
+        "Xi, demorou demais! Até eu cochilei esperando. Tenta de novo?",
+        "O servidor foi fazer um café e esqueceu de voltar. Tenta novamente!",
+        "Timeout! Parece que a internet tá de preguiça hoje. Manda de novo?",
+        "Eita, travou! Até a paciência de Jó não aguenta. Tenta mais uma vez!",
+        "Demorou tanto que achei que era pegadinha. Envia novamente!",
+    ],
+    "audio_expired": [
+        "Esse áudio já era! Passou das 24h e virou abóbora. Manda um novo!",
+        "Áudio expirado! Ele não aguentou esperar e foi embora. Envia outro!",
+        "Tarde demais! Esse áudio já aposentou. Manda um novinho!",
+        "24h se passaram e o áudio disse 'tchau'. Envia de novo!",
+        "Esse áudio já tem barba branca. Manda um mais jovem!",
+    ],
+    "service_unavailable": [
+        "Sistema em manutenção! Estamos dando um tapa no visual. Volta já já!",
+        "Ops! O serviço foi tomar um ar. Tenta daqui a pouquinho!",
+        "Estamos com problemas técnicos. Até robô precisa de um descanso!",
+        "Serviço indisponível! Parece que alguém tropeçou no cabo. Já volta!",
+    ],
+    "cancelled": [
+        "Beleza, não vou transcrever! Seu áudio, suas regras.",
+        "Ok! Guardei meus ouvidos digitais de volta na gaveta.",
+        "Entendido! O áudio permanecerá um mistério.",
+        "Tudo bem! Alguns segredos devem permanecer em áudio.",
+        "Combinado! Vou fingir que não ouvi nada.",
+    ],
+    "processing": [
+        "Transcrevendo seu áudio, aguarde...",
+        "Colocando meus fones de ouvido digitais...",
+        "Analisando cada palavrinha do seu áudio...",
+        "Um momento! Estou ouvindo com atenção...",
+        "Processando... prometo não demorar!",
+    ],
 }
+
+
+def get_error_message(error_type: str) -> str:
+    """Retorna uma mensagem aleatória do tipo especificado"""
+    messages = ERROR_MESSAGES.get(error_type, ["Ops! Algo deu errado."])
+    return random.choice(messages)
 
 # Ajusta URL para asyncpg se vier do Railway (postgres:// -> postgresql+asyncpg://)
 if DATABASE_URL.startswith("postgres://"):
@@ -149,7 +198,7 @@ async def handle_button_response(message: dict, base_url: str, token: str):
         audio_message_id = button_id[4:]  # Remove "nao_"
         await remove_pending_audio(audio_message_id)
         from_number = chat_id.replace("@s.whatsapp.net", "")
-        await send_message(from_number, ERROR_MESSAGES["cancelled"], base_url, token)
+        await send_message(from_number, get_error_message("cancelled"), base_url, token)
 
     return {"status": "ok", "action": "button_handled"}
 
@@ -253,20 +302,18 @@ async def process_transcription(chat_id: str, message_id: str, base_url: str, to
         token = pending.token or token
     elif not base_url or not token:
         # Áudio não encontrado no banco e sem credenciais - provavelmente expirou
-        await send_message(from_number, ERROR_MESSAGES["audio_expired"], base_url, token)
+        await send_message(from_number, get_error_message("audio_expired"), base_url, token)
         return
 
     # Avisa que está processando
-    await send_message(from_number, "Transcrevendo seu áudio, aguarde...", base_url, token)
+    await send_message(from_number, get_error_message("processing"), base_url, token)
 
     # Baixa o áudio
     audio_bytes, download_error = await download_audio_via_uazapi(base_url, token, message_id)
 
     if not audio_bytes:
-        error_msg = ERROR_MESSAGES["download_failed"]
-        if download_error == "timeout":
-            error_msg = ERROR_MESSAGES["timeout"]
-        await send_message(from_number, error_msg, base_url, token)
+        error_type = "timeout" if download_error == "timeout" else "download_failed"
+        await send_message(from_number, get_error_message(error_type), base_url, token)
         await remove_pending_audio(message_id)
         return
 
@@ -276,10 +323,8 @@ async def process_transcription(chat_id: str, message_id: str, base_url: str, to
     if transcription:
         await send_message(from_number, f"*Transcrição:*\n\n{transcription}", base_url, token)
     else:
-        error_msg = ERROR_MESSAGES["transcription_failed"]
-        if transcribe_error == "timeout":
-            error_msg = ERROR_MESSAGES["timeout"]
-        await send_message(from_number, error_msg, base_url, token)
+        error_type = "timeout" if transcribe_error == "timeout" else "transcription_failed"
+        await send_message(from_number, get_error_message(error_type), base_url, token)
 
     # Remove do banco
     await remove_pending_audio(message_id)
