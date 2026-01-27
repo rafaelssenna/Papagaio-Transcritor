@@ -312,9 +312,9 @@ async def has_pending_audio(chat_id: str) -> bool:
 
     async with async_session() as session:
         result = await session.execute(
-            select(PendingAudio).where(PendingAudio.chat_id == chat_id)
+            select(PendingAudio).where(PendingAudio.chat_id == chat_id).limit(1)
         )
-        return result.scalar_one_or_none() is not None
+        return result.scalar() is not None
 
 
 async def remove_pending_audio(message_id: str):
