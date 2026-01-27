@@ -106,6 +106,15 @@ class PendingAudio(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class UserTerms(Base):
+    """Armazena usuários que já viram os termos de uso"""
+    __tablename__ = "user_terms"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    accepted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: cria tabelas
@@ -252,12 +261,56 @@ async def remove_pending_audio(message_id: str):
         await session.commit()
 
 
+async def has_seen_terms(chat_id: str) -> bool:
+    """
+    Verifica se o usuário já viu os termos de uso
+    """
+    if not async_session:
+        return False
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(UserTerms).where(UserTerms.chat_id == chat_id)
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def mark_terms_seen(chat_id: str):
+    """
+    Marca que o usuário já viu os termos de uso
+    """
+    if not async_session:
+        return
+
+    async with async_session() as session:
+        # Verifica se já existe
+        existing = await session.execute(
+            select(UserTerms).where(UserTerms.chat_id == chat_id)
+        )
+        if existing.scalar_one_or_none() is None:
+            user_terms = UserTerms(chat_id=chat_id)
+            session.add(user_terms)
+            await session.commit()
+            print(f"Termos marcados como vistos para: {chat_id}")
+
+
 async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str, token: str):
     """
     Envia botões pedindo confirmação para transcrever
     """
     try:
         from_number = chat_id.replace("@s.whatsapp.net", "")
+
+        # Verifica se é o primeiro contato
+        is_first_contact = not await has_seen_terms(chat_id)
+
+        # Mensagem com ou sem aviso de termos
+        if is_first_contact:
+            text = "Olá! Recebi seu áudio! Deseja que eu faça a transcrição?\n\n_Importante: suas mensagens serão apagadas após 24 horas._"
+            # Marca que já viu os termos
+            await mark_terms_seen(chat_id)
+        else:
+            text = "Recebi seu áudio! Deseja que eu faça a transcrição?"
 
         async with httpx.AsyncClient(timeout=30) as client:
             url = f"{base_url}/send/menu"
@@ -270,7 +323,7 @@ async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str
             payload = {
                 "number": from_number,
                 "type": "button",
-                "text": "Recebi seu áudio! Deseja que eu faça a transcrição?\n\n_Importante: suas mensagens serão apagadas após 24 horas._",
+                "text": text,
                 "choices": [
                     f"Sim, transcrever|sim_{message_id}",
                     f"Não, obrigado|nao_{message_id}"
@@ -281,7 +334,7 @@ async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str
             response = await client.post(url, json=payload, headers=headers)
 
             if response.status_code == 200:
-                print(f"Botões de confirmação enviados para {from_number}")
+                print(f"Botões de confirmação enviados para {from_number} (primeiro contato: {is_first_contact})")
             else:
                 print(f"Erro ao enviar botões: {response.status_code} - {response.text}")
 
