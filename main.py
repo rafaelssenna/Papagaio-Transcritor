@@ -178,18 +178,26 @@ async def webhook(request: Request):
 
         print(f"Áudio recebido de {chat_id}, mensagem: {message_id}")
 
-        # Verifica se é o primeiro contato
-        is_first_contact = not await has_seen_terms(chat_id)
-
-        if is_first_contact:
-            # Primeiro contato: salva no banco e envia botões de confirmação com termos
-            await save_pending_audio(chat_id, message_id, base_url, token)
-            await send_confirmation_buttons(chat_id, message_id, base_url, token)
-            return {"status": "ok", "action": "awaiting_confirmation"}
-        else:
+        # Verifica se já aceitou os termos
+        if await has_seen_terms(chat_id):
             # Já aceitou os termos: transcreve direto
             await process_transcription(chat_id, message_id, base_url, token)
             return {"status": "ok", "action": "transcribed"}
+
+        # Ainda não aceitou - salva o áudio pendente
+        await save_pending_audio(chat_id, message_id, base_url, token)
+
+        # Verifica se já tem outros áudios pendentes (já mostrou os termos)
+        pending_count = len(await get_all_pending_audios(chat_id))
+
+        if pending_count == 1:
+            # Primeiro áudio desse usuário: envia os termos
+            await send_confirmation_buttons(chat_id, message_id, base_url, token)
+            return {"status": "ok", "action": "awaiting_confirmation"}
+        else:
+            # Já tem áudios pendentes, não precisa enviar termos de novo
+            print(f"Áudio adicionado à fila ({pending_count} pendentes)")
+            return {"status": "ok", "action": "queued"}
 
     except Exception as e:
         print(f"Erro no webhook: {e}")
@@ -207,13 +215,19 @@ async def handle_button_response(message: dict, base_url: str, token: str):
 
     # Extrai o message_id do button_id (formato: "sim_MESSAGEID" ou "nao_MESSAGEID")
     if button_id.startswith("sim_"):
-        audio_message_id = button_id[4:]  # Remove "sim_"
         # Marca que aceitou os termos (próximos áudios serão transcritos direto)
         await mark_terms_seen(chat_id)
-        await process_transcription(chat_id, audio_message_id, base_url, token)
+
+        # Busca TODOS os áudios pendentes e transcreve
+        pending_audios = await get_all_pending_audios(chat_id)
+        print(f"Transcrevendo {len(pending_audios)} áudio(s) pendente(s)")
+
+        for pending in pending_audios:
+            await process_transcription(chat_id, pending.message_id, pending.base_url, pending.token)
+
     elif button_id.startswith("nao_"):
-        audio_message_id = button_id[4:]  # Remove "nao_"
-        await remove_pending_audio(audio_message_id)
+        # Remove TODOS os áudios pendentes
+        await remove_all_pending_audios(chat_id)
         from_number = chat_id.replace("@s.whatsapp.net", "")
         await send_message(from_number, get_error_message("cancelled"), base_url, token)
         # Não marca os termos como aceitos, então vai perguntar de novo no próximo áudio
@@ -258,6 +272,34 @@ async def get_pending_audio(message_id: str) -> PendingAudio | None:
         return result.scalar_one_or_none()
 
 
+async def get_all_pending_audios(chat_id: str) -> list[PendingAudio]:
+    """
+    Busca todos os áudios pendentes de um chat
+    """
+    if not async_session:
+        return []
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(PendingAudio).where(PendingAudio.chat_id == chat_id)
+        )
+        return list(result.scalars().all())
+
+
+async def has_pending_audio(chat_id: str) -> bool:
+    """
+    Verifica se o chat já tem algum áudio pendente
+    """
+    if not async_session:
+        return False
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(PendingAudio).where(PendingAudio.chat_id == chat_id)
+        )
+        return result.scalar_one_or_none() is not None
+
+
 async def remove_pending_audio(message_id: str):
     """
     Remove áudio pendente do banco de dados
@@ -267,6 +309,18 @@ async def remove_pending_audio(message_id: str):
 
     async with async_session() as session:
         await session.execute(delete(PendingAudio).where(PendingAudio.message_id == message_id))
+        await session.commit()
+
+
+async def remove_all_pending_audios(chat_id: str):
+    """
+    Remove todos os áudios pendentes de um chat
+    """
+    if not async_session:
+        return
+
+    async with async_session() as session:
+        await session.execute(delete(PendingAudio).where(PendingAudio.chat_id == chat_id))
         await session.commit()
 
 
