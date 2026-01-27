@@ -179,11 +179,18 @@ async def webhook(request: Request):
 
         print(f"Áudio recebido de {chat_id}, mensagem: {message_id}")
 
-        # Salva no banco e envia botões de confirmação
-        await save_pending_audio(chat_id, message_id, base_url, token)
-        await send_confirmation_buttons(chat_id, message_id, base_url, token)
+        # Verifica se é o primeiro contato
+        is_first_contact = not await has_seen_terms(chat_id)
 
-        return {"status": "ok", "action": "awaiting_confirmation"}
+        if is_first_contact:
+            # Primeiro contato: salva no banco e envia botões de confirmação com termos
+            await save_pending_audio(chat_id, message_id, base_url, token)
+            await send_confirmation_buttons(chat_id, message_id, base_url, token)
+            return {"status": "ok", "action": "awaiting_confirmation"}
+        else:
+            # Já aceitou os termos: transcreve direto
+            await process_transcription(chat_id, message_id, base_url, token)
+            return {"status": "ok", "action": "transcribed"}
 
     except Exception as e:
         print(f"Erro no webhook: {e}")
@@ -202,12 +209,15 @@ async def handle_button_response(message: dict, base_url: str, token: str):
     # Extrai o message_id do button_id (formato: "sim_MESSAGEID" ou "nao_MESSAGEID")
     if button_id.startswith("sim_"):
         audio_message_id = button_id[4:]  # Remove "sim_"
+        # Marca que aceitou os termos (próximos áudios serão transcritos direto)
+        await mark_terms_seen(chat_id)
         await process_transcription(chat_id, audio_message_id, base_url, token)
     elif button_id.startswith("nao_"):
         audio_message_id = button_id[4:]  # Remove "nao_"
         await remove_pending_audio(audio_message_id)
         from_number = chat_id.replace("@s.whatsapp.net", "")
         await send_message(from_number, get_error_message("cancelled"), base_url, token)
+        # Não marca os termos como aceitos, então vai perguntar de novo no próximo áudio
 
     return {"status": "ok", "action": "button_handled"}
 
@@ -296,21 +306,10 @@ async def mark_terms_seen(chat_id: str):
 
 async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str, token: str):
     """
-    Envia botões pedindo confirmação para transcrever
+    Envia botões pedindo confirmação para transcrever (apenas no primeiro contato)
     """
     try:
         from_number = chat_id.replace("@s.whatsapp.net", "")
-
-        # Verifica se é o primeiro contato
-        is_first_contact = not await has_seen_terms(chat_id)
-
-        # Mensagem com ou sem aviso de termos
-        if is_first_contact:
-            text = "Olá! Recebi seu áudio! Deseja que eu faça a transcrição?\n\n_Importante: suas mensagens serão apagadas após 24 horas._"
-            # Marca que já viu os termos
-            await mark_terms_seen(chat_id)
-        else:
-            text = "Recebi seu áudio! Deseja que eu faça a transcrição?"
 
         async with httpx.AsyncClient(timeout=30) as client:
             url = f"{base_url}/send/menu"
@@ -323,7 +322,7 @@ async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str
             payload = {
                 "number": from_number,
                 "type": "button",
-                "text": text,
+                "text": "Olá! Sou um bot que transcreve áudios usando IA.\n\nDeseja que eu faça a transcrição do seu áudio?\n\n_Importante: suas mensagens serão apagadas após 24 horas._",
                 "choices": [
                     f"Sim, transcrever|sim_{message_id}",
                     f"Não, obrigado|nao_{message_id}"
@@ -334,7 +333,7 @@ async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str
             response = await client.post(url, json=payload, headers=headers)
 
             if response.status_code == 200:
-                print(f"Botões de confirmação enviados para {from_number} (primeiro contato: {is_first_contact})")
+                print(f"Termos enviados para {from_number}")
             else:
                 print(f"Erro ao enviar botões: {response.status_code} - {response.text}")
 
