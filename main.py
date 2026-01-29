@@ -82,11 +82,53 @@ MULTIPLE_AUDIO_MESSAGES = [
     "Epa! {n} áudios de uma vez? Challenge accepted! Aguarde...",
 ]
 
+# Mensagens para o resumo
+SUMMARY_MESSAGES = {
+    "ask": [
+        "Quer que eu faça um resuminho rápido de tudo isso?",
+        "E aí, bora um resumo pra não precisar ler tudo?",
+        "Posso mastigar essas informações pra você. Quer um resumo?",
+        "Muita informação né? Posso fazer um TL;DR pra você!",
+        "Quer que eu resuma isso tudo em poucas palavras?",
+    ],
+    "generating": [
+        "Deixa comigo! Gerando o resumo...",
+        "Analisando tudo com carinho... Já volto com o resumo!",
+        "Modo resumidor ativado! Aguarde...",
+        "Colocando meu chapéu de escritor... Gerando resumo!",
+        "Processando informações... Seu resumo vem aí!",
+    ],
+    "done": [
+        "*📝 Resumo pronto!*\n\n",
+        "*✨ Aqui está seu resumo:*\n\n",
+        "*📋 TL;DR pra você:*\n\n",
+        "*🎯 Resumindo tudo:*\n\n",
+        "*📖 Em poucas palavras:*\n\n",
+    ],
+    "no_thanks": [
+        "Beleza! Se precisar, é só mandar mais áudios!",
+        "Tudo bem! Fico por aqui se precisar de mim!",
+        "Ok! Qualquer coisa, só mandar outro áudio!",
+        "Sem problemas! Até a próxima!",
+    ],
+    "failed": [
+        "Ops! Meu cérebro travou ao fazer o resumo. Tenta de novo?",
+        "Ih, deu ruim no resumo! Muita informação pro meu processador.",
+        "Desculpa, não consegui resumir. Acho que preciso de mais café digital!",
+    ],
+}
+
 
 def get_multiple_audio_message(count: int) -> str:
     """Retorna uma mensagem aleatória para múltiplos áudios"""
     message = random.choice(MULTIPLE_AUDIO_MESSAGES)
     return message.format(n=count)
+
+
+def get_summary_message(msg_type: str) -> str:
+    """Retorna uma mensagem aleatória do tipo de resumo especificado"""
+    messages = SUMMARY_MESSAGES.get(msg_type, [""])
+    return random.choice(messages)
 
 
 def get_error_message(error_type: str) -> str:
@@ -133,16 +175,29 @@ class UserTerms(Base):
     accepted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class RecentTranscription(Base):
+    """Armazena transcrições recentes para possível resumo"""
+    __tablename__ = "recent_transcriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[str] = mapped_column(String(50), index=True)
+    transcription: Mapped[str] = mapped_column(String(10000))
+    base_url: Mapped[str] = mapped_column(String(255))
+    token: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: cria tabelas
     if engine:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-        # Limpa áudios antigos (mais de 24 horas)
+        # Limpa dados antigos (mais de 24 horas)
         async with async_session() as session:
             cutoff = datetime.utcnow() - timedelta(hours=24)
             await session.execute(delete(PendingAudio).where(PendingAudio.created_at < cutoff))
+            await session.execute(delete(RecentTranscription).where(RecentTranscription.created_at < cutoff))
             await session.commit()
     yield
     # Shutdown
@@ -238,10 +293,49 @@ async def handle_button_response(message: dict, base_url: str, token: str):
 
     print(f"Resposta de botão recebida: {button_id} de {chat_id}")
 
+    # Verifica se é botão de resumo
+    if button_id.startswith("resumo_"):
+        # Usuário quer um resumo
+        from_number = chat_id.replace("@s.whatsapp.net", "")
+
+        # Busca as transcrições recentes
+        transcriptions = await get_recent_transcriptions(chat_id)
+
+        if not transcriptions:
+            await send_message(from_number, "Não encontrei transcrições para resumir. Manda uns áudios aí!", base_url, token)
+            return {"status": "ok", "action": "no_transcriptions"}
+
+        # Avisa que está gerando o resumo
+        await send_message(from_number, get_summary_message("generating"), base_url, token)
+
+        # Gera o resumo
+        texts = [t.transcription for t in transcriptions]
+        summary = await generate_summary(texts)
+
+        if summary:
+            await send_message(from_number, get_summary_message("done") + summary, base_url, token)
+        else:
+            await send_message(from_number, get_summary_message("failed"), base_url, token)
+
+        # Limpa as transcrições após o resumo
+        await clear_transcriptions(chat_id)
+        return {"status": "ok", "action": "summary_generated"}
+
+    elif button_id.startswith("nao_resumo_"):
+        # Usuário não quer resumo
+        from_number = chat_id.replace("@s.whatsapp.net", "")
+        await send_message(from_number, get_summary_message("no_thanks"), base_url, token)
+        # Limpa as transcrições
+        await clear_transcriptions(chat_id)
+        return {"status": "ok", "action": "summary_declined"}
+
     # Extrai o message_id do button_id (formato: "sim_MESSAGEID" ou "nao_MESSAGEID")
     if button_id.startswith("sim_"):
         # Marca que aceitou os termos (próximos áudios serão transcritos direto)
         await mark_terms_seen(chat_id)
+
+        # Limpa transcrições anteriores (se houver)
+        await clear_transcriptions(chat_id)
 
         # Busca TODOS os áudios pendentes e transcreve
         pending_audios = await get_all_pending_audios(chat_id)
@@ -259,6 +353,9 @@ async def handle_button_response(message: dict, base_url: str, token: str):
             # Transcreve todos sem enviar "processando" novamente
             for pending in pending_audios:
                 await process_transcription(chat_id, pending.message_id, pending.base_url, pending.token, show_processing=False)
+
+            # Envia botão de resumo após transcrições
+            await send_summary_button(chat_id, base_url, token)
 
     elif button_id.startswith("nao_"):
         # Remove TODOS os áudios pendentes
@@ -392,6 +489,124 @@ async def mark_terms_seen(chat_id: str):
             print(f"Termos marcados como vistos para: {chat_id}")
 
 
+async def save_transcription(chat_id: str, transcription: str, base_url: str, token: str):
+    """
+    Salva uma transcrição recente para possível resumo
+    """
+    if not async_session:
+        return
+
+    async with async_session() as session:
+        recent = RecentTranscription(
+            chat_id=chat_id,
+            transcription=transcription,
+            base_url=base_url,
+            token=token
+        )
+        session.add(recent)
+        await session.commit()
+        print(f"Transcrição salva para resumo: {chat_id}")
+
+
+async def get_recent_transcriptions(chat_id: str) -> list[RecentTranscription]:
+    """
+    Busca todas as transcrições recentes de um chat
+    """
+    if not async_session:
+        return []
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(RecentTranscription)
+            .where(RecentTranscription.chat_id == chat_id)
+            .order_by(RecentTranscription.created_at)
+        )
+        return list(result.scalars().all())
+
+
+async def clear_transcriptions(chat_id: str):
+    """
+    Limpa todas as transcrições recentes de um chat
+    """
+    if not async_session:
+        return
+
+    async with async_session() as session:
+        await session.execute(
+            delete(RecentTranscription).where(RecentTranscription.chat_id == chat_id)
+        )
+        await session.commit()
+        print(f"Transcrições limpas para: {chat_id}")
+
+
+async def send_summary_button(chat_id: str, base_url: str, token: str):
+    """
+    Envia botão perguntando se quer um resumo das transcrições
+    """
+    try:
+        from_number = chat_id.replace("@s.whatsapp.net", "")
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            url = f"{base_url}/send/menu"
+
+            headers = {
+                "Content-Type": "application/json",
+                "token": token
+            }
+
+            payload = {
+                "number": from_number,
+                "type": "button",
+                "text": get_summary_message("ask"),
+                "choices": [
+                    f"Sim, fazer resumo|resumo_{chat_id}",
+                    f"Não, obrigado|nao_resumo_{chat_id}"
+                ],
+                "footerText": "Resumo por IA"
+            }
+
+            response = await client.post(url, json=payload, headers=headers)
+
+            if response.status_code == 200:
+                print(f"Botão de resumo enviado para {from_number}")
+            else:
+                print(f"Erro ao enviar botão de resumo: {response.status_code} - {response.text}")
+
+    except Exception as e:
+        print(f"Erro ao enviar botão de resumo: {e}")
+
+
+async def generate_summary(transcriptions: list[str]) -> str | None:
+    """
+    Gera um resumo das transcrições usando Gemini
+    """
+    try:
+        model = genai.GenerativeModel("gemini-2.0-flash")
+
+        # Junta todas as transcrições
+        all_text = "\n\n---\n\n".join(transcriptions)
+
+        prompt = f"""Faça um resumo conciso e objetivo das seguintes transcrições de áudio.
+O resumo deve capturar os pontos principais de forma clara e direta.
+Se houver vários assuntos, organize em tópicos.
+Responda em português brasileiro.
+
+Transcrições:
+{all_text}
+
+Resumo:"""
+
+        response = model.generate_content(prompt)
+
+        if response.text:
+            return response.text.strip()
+        return None
+
+    except Exception as e:
+        print(f"Erro ao gerar resumo: {e}")
+        return None
+
+
 async def process_queue_after_delay(chat_id: str, base_url: str, token: str, delay_seconds: int = 15):
     """
     Aguarda um tempo para coletar mais áudios e depois processa toda a fila
@@ -409,6 +624,9 @@ async def process_queue_after_delay(chat_id: str, base_url: str, token: str, del
 
     print(f"Processando {num_audios} áudio(s) de {chat_id}")
 
+    # Limpa transcrições anteriores (usuário enviou novos áudios sem pedir resumo)
+    await clear_transcriptions(chat_id)
+
     from_number = chat_id.replace("@s.whatsapp.net", "")
 
     # Envia mensagem de processamento apenas uma vez
@@ -420,6 +638,9 @@ async def process_queue_after_delay(chat_id: str, base_url: str, token: str, del
     # Transcreve todos
     for pending in pending_audios:
         await process_transcription(chat_id, pending.message_id, pending.base_url, pending.token, show_processing=False)
+
+    # Envia botão de resumo após transcrições
+    await send_summary_button(chat_id, base_url, token)
 
 
 async def send_confirmation_buttons(chat_id: str, message_id: str, base_url: str, token: str):
@@ -473,10 +694,11 @@ Deseja continuar?"""
         print(f"Erro ao enviar botões: {e}")
 
 
-async def process_transcription(chat_id: str, message_id: str, base_url: str, token: str, show_processing: bool = True):
+async def process_transcription(chat_id: str, message_id: str, base_url: str, token: str, show_processing: bool = True) -> str | None:
     """
     Processa a transcrição após confirmação do usuário
     show_processing: se True, envia mensagem "Transcrevendo..." antes de processar
+    Retorna a transcrição se sucesso, None se falhou
     """
     from_number = chat_id.replace("@s.whatsapp.net", "")
 
@@ -488,7 +710,7 @@ async def process_transcription(chat_id: str, message_id: str, base_url: str, to
     elif not base_url or not token:
         # Áudio não encontrado no banco e sem credenciais - provavelmente expirou
         await send_message(from_number, get_error_message("audio_expired"), base_url, token)
-        return
+        return None
 
     # Avisa que está processando (só se não tiver sido avisado antes)
     if show_processing:
@@ -501,19 +723,22 @@ async def process_transcription(chat_id: str, message_id: str, base_url: str, to
         error_type = "timeout" if download_error == "timeout" else "download_failed"
         await send_message(from_number, get_error_message(error_type), base_url, token)
         await remove_pending_audio(message_id)
-        return
+        return None
 
     # Transcreve
     transcription, transcribe_error = await transcribe_audio(audio_bytes)
 
     if transcription:
         await send_message(from_number, f"*Transcrição:*\n\n{transcription}", base_url, token)
+        # Salva a transcrição para possível resumo
+        await save_transcription(chat_id, transcription, base_url, token)
     else:
         error_type = "timeout" if transcribe_error == "timeout" else "transcription_failed"
         await send_message(from_number, get_error_message(error_type), base_url, token)
 
     # Remove do banco
     await remove_pending_audio(message_id)
+    return transcription
 
 
 async def download_audio_via_uazapi(base_url: str, token: str, message_id: str) -> tuple[bytes | None, str | None]:
