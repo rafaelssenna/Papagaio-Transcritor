@@ -120,35 +120,29 @@ SUMMARY_MESSAGES = {
 
 # Mensagens para áudios longos
 LONG_AUDIO_MESSAGES = [
-    "Eita, esse áudio tá grandão hein! 🎵 Vou tentar, mas pode demorar um pouquinho...",
-    "Uau, alguém gravou um podcast! 😅 Deixa eu processar esse áudio longo...",
-    "Esse áudio tá maior que história de pescador! Aguenta aí que vou transcrever...",
-    "Caramba, você mandou um audiobook! 📚 Processando o áudio longo...",
-    "Áudio extenso detectado! Vou precisar de mais café digital pra esse... ☕",
+    "Áudio longo detectado. Pode levar um pouco mais de tempo...",
+    "Processando áudio extenso. Aguarde...",
+    "Áudio grande recebido. Transcrevendo...",
+    "Esse áudio é longo. Processando, aguarde...",
+    "Áudio com mais de 5 minutos. Transcrevendo...",
 ]
 
 # Mensagens para áudios curtinhos (< 10 seg)
 SHORT_AUDIO_MESSAGES = [
-    "Opa, áudio relâmpago! ⚡ Já já sai a transcrição...",
-    "Direto ao ponto! Adoro gente objetiva 😄",
-    "Áudio speedrun detectado! 🏃 Processando...",
-    "Rapidinho esse hein! Tipo story de 5 segundos 📱",
-    "Esse foi rápido! Tipo trailer de filme 🎬",
-    "Áudio modo Twitter: curto e direto! Transcrevendo...",
-    "Piscou e já acabou! 👀 Deixa eu ver o que disse...",
-    "Econômico nas palavras! Transcrevendo...",
+    "Áudio curto recebido. Processando...",
+    "Áudio rápido! Transcrevendo...",
+    "Processando áudio curto...",
+    "Áudio breve detectado. Já vai!",
+    "Áudio pequeno. Transcrevendo...",
 ]
 
 # Mensagens para áudios médios (30 seg a 1 min)
 MEDIUM_AUDIO_MESSAGES = [
-    "Áudio no ponto certo! 👌 Transcrevendo...",
-    "Tamanho bom de áudio! Processando 🎯",
-    "Áudio equilibrado! ☕ Transcrevendo...",
-    "Esse tá de boa! Tipo vídeo do TikTok 📱",
-    "Áudio tranquilo! Nem 8 nem 80, transcrevendo...",
-    "Tamanho Cachinhos Dourados: nem muito, nem pouco! 🐻",
-    "Áudio de boa! Já vou transcrever 📝",
-    "Show! Áudio no tempo certo, processando...",
+    "Áudio recebido. Transcrevendo...",
+    "Processando seu áudio...",
+    "Áudio de tamanho normal. Transcrevendo...",
+    "Recebido! Processando áudio...",
+    "Transcrevendo seu áudio...",
 ]
 
 # Limites de tamanho (aproximados)
