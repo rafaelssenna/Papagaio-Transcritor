@@ -130,25 +130,25 @@ LONG_AUDIO_MESSAGES = [
 # Mensagens para áudios curtinhos (< 10 seg)
 SHORT_AUDIO_MESSAGES = [
     "Opa, áudio relâmpago! ⚡ Já já sai a transcrição...",
-    "Uau, direto ao ponto! Adoro gente objetiva 😄",
+    "Direto ao ponto! Adoro gente objetiva 😄",
     "Áudio speedrun detectado! 🏃 Processando...",
-    "Curtinho e grosso! Deixa eu ouvir rapidinho...",
-    "Esse foi rápido hein! Tipo trailer de filme 🎬",
+    "Rapidinho esse hein! Tipo story de 5 segundos 📱",
+    "Esse foi rápido! Tipo trailer de filme 🎬",
     "Áudio modo Twitter: curto e direto! Transcrevendo...",
     "Piscou e já acabou! 👀 Deixa eu ver o que disse...",
-    "Econômico nas palavras! Gostei do estilo 😎",
+    "Econômico nas palavras! Transcrevendo...",
 ]
 
 # Mensagens para áudios médios (30 seg a 1 min)
 MEDIUM_AUDIO_MESSAGES = [
-    "Áudio no ponto certo! 👌 Nem curto nem longo, perfeito!",
-    "Tamanho ideal de áudio! Você manja das coisas 🎯",
-    "Áudio equilibrado como café com leite! ☕ Processando...",
-    "Esse tá no tamanho certo! Tipo episódio de TikTok 📱",
-    "Áudio mediano chegou! Nem 8 nem 80, transcrevendo...",
+    "Áudio no ponto certo! 👌 Transcrevendo...",
+    "Tamanho bom de áudio! Processando 🎯",
+    "Áudio equilibrado! ☕ Transcrevendo...",
+    "Esse tá de boa! Tipo vídeo do TikTok 📱",
+    "Áudio tranquilo! Nem 8 nem 80, transcrevendo...",
     "Tamanho Cachinhos Dourados: nem muito, nem pouco! 🐻",
-    "Áudio de tamanho perfeito! Você é uma pessoa sensata 😌",
-    "Esse é o tamanho que eu gosto! Processando com carinho...",
+    "Áudio de boa! Já vou transcrever 📝",
+    "Show! Áudio no tempo certo, processando...",
 ]
 
 # Limites de tamanho (aproximados)
