@@ -64,38 +64,38 @@ ERROR_MESSAGES = {
     "processing": [
         "Transcrevendo seu áudio, aguarde...",
         "Colocando meus fones de ouvido digitais...",
-        "Analisando cada palavrinha do seu áudio...",
-        "Um momento! Estou ouvindo com atenção...",
-        "Processando... prometo não demorar!",
+        "Analisando o áudio... Já sai!",
+        "Um momento! Processando o áudio...",
+        "Processando... Já volto com a transcrição!",
     ],
 }
 
 # Mensagens para múltiplos áudios (com placeholder {n} para o número)
 MULTIPLE_AUDIO_MESSAGES = [
     "Eita! {n} áudios de uma vez? Bora trabalhar! Aguarde...",
-    "Wow, {n} áudios! Vou colocar meus fones estéreo digitais...",
+    "Wow, {n} áudios! Colocando meus fones estéreo digitais...",
     "Maratona de {n} áudios começando! Preparando os ouvidos...",
     "{n} áudios na fila! Deixa comigo, já volto com tudo transcrito!",
-    "Recebido! {n} áudios para transcrever. Meus neurônios digitais estão a todo vapor!",
-    "Uau, {n} áudios! Você tá inspirado hoje hein? Aguarde...",
-    "{n} áudios chegaram! Vou ouvir tudo com carinho, já volto!",
+    "Recebido! {n} áudios para transcrever. Neurônios digitais a todo vapor!",
+    "Opa, {n} áudios! Tá produtivo hoje hein? Aguarde...",
+    "{n} áudios chegaram! Bora transcrever tudo, já volto!",
     "Epa! {n} áudios de uma vez? Challenge accepted! Aguarde...",
 ]
 
 # Mensagens para o resumo
 SUMMARY_MESSAGES = {
     "ask": [
-        "Quer que eu faça um resuminho rápido de tudo isso?",
-        "E aí, bora um resumo pra não precisar ler tudo?",
-        "Posso mastigar essas informações pra você. Quer um resumo?",
-        "Muita informação né? Posso fazer um TL;DR pra você!",
-        "Quer que eu resuma isso tudo em poucas palavras?",
+        "Quer que eu faça um resumo rápido de tudo isso?",
+        "E aí, bora um resumo pra facilitar?",
+        "Posso resumir essas informações pra você. Quer?",
+        "Muita informação né? Posso fazer um TL;DR!",
+        "Quer que eu resuma em poucas palavras?",
     ],
     "generating": [
         "Deixa comigo! Gerando o resumo...",
-        "Analisando tudo com carinho... Já volto com o resumo!",
+        "Analisando tudo... Já volto com o resumo!",
         "Modo resumidor ativado! Aguarde...",
-        "Colocando meu chapéu de escritor... Gerando resumo!",
+        "Preparando o resumo... Já sai!",
         "Processando informações... Seu resumo vem aí!",
     ],
     "done": [
@@ -107,14 +107,14 @@ SUMMARY_MESSAGES = {
     ],
     "no_thanks": [
         "Beleza! Se precisar, é só mandar mais áudios!",
-        "Tudo bem! Fico por aqui se precisar de mim!",
-        "Ok! Qualquer coisa, só mandar outro áudio!",
+        "Tudo bem! Tô aqui se precisar!",
+        "Ok! Qualquer coisa, manda outro áudio!",
         "Sem problemas! Até a próxima!",
     ],
     "failed": [
-        "Ops! Meu cérebro travou ao fazer o resumo. Tenta de novo?",
-        "Ih, deu ruim no resumo! Muita informação pro meu processador.",
-        "Desculpa, não consegui resumir. Acho que preciso de mais café digital!",
+        "Ops! Deu erro ao fazer o resumo. Tenta de novo?",
+        "Ih, deu ruim no resumo! Muita informação de uma vez.",
+        "Desculpa, não consegui resumir. Tenta novamente!",
     ],
 }
 
