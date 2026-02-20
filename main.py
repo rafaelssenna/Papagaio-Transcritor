@@ -193,8 +193,13 @@ elif DATABASE_URL.startswith("postgresql://"):
 # Configura Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Database setup
-engine = create_async_engine(DATABASE_URL, echo=False) if DATABASE_URL else None
+# Database setup - com pool_pre_ping para reconectar automaticamente
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,  # Verifica se conexão está viva antes de usar
+    pool_recycle=300,    # Recicla conexões a cada 5 minutos
+) if DATABASE_URL else None
 async_session = async_sessionmaker(engine, expire_on_commit=False) if engine else None
 
 
