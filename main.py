@@ -271,6 +271,42 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.post("/broadcast")
+async def broadcast(request: Request):
+    """
+    Envia mensagem para todos os usuários que já aceitaram os termos
+    Requer base_url e token no body
+    """
+    try:
+        data = await request.json()
+        base_url = data.get("base_url")
+        token = data.get("token")
+        message = data.get("message")
+
+        if not base_url or not token or not message:
+            return {"status": "error", "message": "base_url, token e message são obrigatórios"}
+
+        if not async_session:
+            return {"status": "error", "message": "Banco de dados não configurado"}
+
+        # Busca todos os usuários que aceitaram os termos
+        async with async_session() as session:
+            result = await session.execute(select(UserTerms))
+            users = result.scalars().all()
+
+        sent_count = 0
+        for user in users:
+            from_number = user.chat_id.replace("@s.whatsapp.net", "")
+            await send_message(from_number, message, base_url, token)
+            sent_count += 1
+
+        return {"status": "ok", "sent_to": sent_count}
+
+    except Exception as e:
+        print(f"Erro no broadcast: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 @app.post("/webhook")
 async def webhook(request: Request):
     """
